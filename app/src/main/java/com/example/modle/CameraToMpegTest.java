@@ -157,7 +157,7 @@ public class CameraToMpegTest extends AndroidTestCase {
             prepareCamera(encWidth, encHeight);
             prepareEncoder(encWidth, encHeight, encBitRate);
             mInputSurface.makeCurrent();
-            prepareSurfaceTexture();
+            prepareSurfaceTexture();//关联了camera和surfaceTexture, textureid是自己创建的
 
             mCamera.startPreview();
 
@@ -564,6 +564,7 @@ public class CameraToMpegTest extends AndroidTestCase {
             int[] surfaceAttribs = {
                     EGL14.EGL_NONE
             };
+            //surface和EGL关联，应该就是拿到了opengl线程，类似于GLSurfaceView了
             mEGLSurface = EGL14.eglCreateWindowSurface(mEGLDisplay, configs[0], mSurface,
                     surfaceAttribs, 0);
             checkEglError("eglCreateWindowSurface");
@@ -595,6 +596,10 @@ public class CameraToMpegTest extends AndroidTestCase {
          * Makes our EGL context and surface current.
          */
         public void makeCurrent() {
+            //在完成EGL的初始化之后，需要通过eglMakeCurrent()函数来将当前的上下文切换，这样opengl的函数才能启动作用
+            //该接口将申请到的display，draw（surface）和 context进行了绑定。也就是说，
+            // 在context下的OpenGLAPI指令将draw（surface）作为其渲染最终目的地。
+            // 而display作为draw（surface）的前端显示。调用后，当前线程使用的EGLContex为context。
             EGL14.eglMakeCurrent(mEGLDisplay, mEGLSurface, mEGLSurface, mEGLContext);
             checkEglError("eglMakeCurrent");
         }
@@ -663,6 +668,11 @@ public class CameraToMpegTest extends AndroidTestCase {
             //
             // Java language note: passing "this" out of a constructor is generally unwise,
             // but we should be able to get away with it here.
+            /*
+            Java层的SurfaceTexture，有setOnFrameAvailableListener方法，
+            其将『上一级』对象（即TextureView）设置为onFrameAvailableListener，
+            这样SurfaceTexture在拿到新的『流』数据时会通知TextureView。
+             */
             mSurfaceTexture.setOnFrameAvailableListener(this);
         }
 
