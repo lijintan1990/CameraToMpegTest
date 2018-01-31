@@ -85,7 +85,7 @@ public class CameraToMpegTest extends AndroidTestCase {
             "varying vec2 vTextureCoord;\n" +
             "uniform samplerExternalOES sTexture;\n" +
             "void main() {\n" +
-            "  gl_FragColor = texture2D(sTexture, vTextureCoord).gbra;\n" +
+            "  gl_FragColor = texture2D(sTexture, vTextureCoord).rgba;\n" +
             "}\n";
 
     // encoder / muxer state
