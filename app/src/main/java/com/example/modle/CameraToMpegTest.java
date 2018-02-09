@@ -65,6 +65,10 @@ import java.nio.FloatBuffer;
  * (This was derived from bits and pieces of CTS tests, and is packaged as such, but is not
  * currently part of CTS.)
  */
+/*
+    相关资料可以查看湖广午王的博客：http://blog.csdn.net/junzia/article/details/53166332
+    这篇http://blog.csdn.net/gh_home/article/details/52399959
+ */
 public class CameraToMpegTest extends AndroidTestCase {
     private static final String TAG = "CameraToMpegTest";
     private static final boolean VERBOSE = false;           // lots of logging
@@ -524,6 +528,7 @@ public class CameraToMpegTest extends AndroidTestCase {
 
         /**
          * Prepares EGL.  We want a GLES 2.0 context and a surface that supports recording.
+         * http://sr1.me/lets-talk-about-eglmakecurrent-eglswapbuffers-glflush-glfinish-chinese
          */
         private void eglSetup() {
             mEGLDisplay = EGL14.eglGetDisplay(EGL14.EGL_DEFAULT_DISPLAY);
@@ -556,6 +561,13 @@ public class CameraToMpegTest extends AndroidTestCase {
                     EGL14.EGL_CONTEXT_CLIENT_VERSION, 2,
                     EGL14.EGL_NONE
             };
+            /*
+            Context不是什么神秘的东西，它仅仅是一个容器，里面放着两个东西：
+            内部状态信息(View port, depth range, clear color, textures, VBO, FBO, ...)
+            调用缓存，保存了在这个Context下发起的GL调用指令。(OpenGL 调用是异步的)
+            总的来说，Context是设计来存储渲染相关的输入数据。
+             */
+            // EGL_NO_CONTEXT表示不向其它的context共享资源
             mEGLContext = EGL14.eglCreateContext(mEGLDisplay, configs[0], EGL14.EGL_NO_CONTEXT,
                     attrib_list, 0);
             checkEglError("eglCreateContext");
@@ -564,6 +576,11 @@ public class CameraToMpegTest extends AndroidTestCase {
             int[] surfaceAttribs = {
                     EGL14.EGL_NONE
             };
+            /*
+            对应的Surface则是设计来存储渲染相关的输出数据。Surface实际上是一个对底层
+            窗口对象的拓展、或是一个有着额外辅助缓冲的像素映射(pixmap)。这些辅助缓存
+            包括颜色缓存(color buffer)、深度缓冲(depth buffer)、模板缓冲(stencil buffer)。
+             */
             //surface和EGL关联，应该就是拿到了opengl线程，类似于GLSurfaceView了
             mEGLSurface = EGL14.eglCreateWindowSurface(mEGLDisplay, configs[0], mSurface,
                     surfaceAttribs, 0);
@@ -596,11 +613,18 @@ public class CameraToMpegTest extends AndroidTestCase {
          * Makes our EGL context and surface current.
          */
         public void makeCurrent() {
+            /*
+            eglMakeCurrent把context绑定到当前的渲染线程以及draw和read指定的Surface。
+            draw用于除数据回读(glReadPixels、glCopyTexImage2D和glCopyTexSubImage2D)之外的所有GL 操作。
+            回读操作作用于read指定的Surface上的帧缓冲(frame buffer)。
+            因此，当我们在线程T上调用GL指令(如：glDrawElements)，OpenGL ES 会查询T线程绑定是哪个Context C，
+            进而查询是哪个Surface draw和哪个Surface read绑定到了这个Context C上。
+             */
             //在完成EGL的初始化之后，需要通过eglMakeCurrent()函数来将当前的上下文切换，这样opengl的函数才能启动作用
             //该接口将申请到的display，draw（surface）和 context进行了绑定。也就是说，
             // 在context下的OpenGLAPI指令将draw（surface）作为其渲染最终目的地。
             // 而display作为draw（surface）的前端显示。调用后，当前线程使用的EGLContex为context。
-            EGL14.eglMakeCurrent(mEGLDisplay, mEGLSurface, mEGLSurface, mEGLContext);
+            EGL14.eglMakeCurrent(mEGLDisplay, mEGLSurface, mEGLSurface, mEGLContext);//这两个mEGLSurface表示读写在同一个surface
             checkEglError("eglMakeCurrent");
         }
 
@@ -608,6 +632,14 @@ public class CameraToMpegTest extends AndroidTestCase {
          * Calls eglSwapBuffers.  Use this to "publish" the current frame.
          */
         public boolean swapBuffers() {
+            /*
+            第一次看到这个调用的时候，我以为它的作用是对display和surface进行交换:)
+            实际上，这里需要重点注意的是surface。如果这里的`surface 是一个像素
+            缓冲(pixel buffer)Surface，那什么都不会发生，调用将正确的返回，不报任何错误。
+            但如果surface是一个双重缓冲surface(大多数情况)，这个方法将会交换surface内部
+            的前端缓冲(front-buffer)和后端缓冲(back-surface)。后端缓冲用于存储渲染结果，
+            前端缓冲则用于底层窗口系统，底层窗口系统将缓冲中的颜色信息显示到设备上。
+             */
             boolean result = EGL14.eglSwapBuffers(mEGLDisplay, mEGLSurface);
             checkEglError("eglSwapBuffers");
             return result;
@@ -726,6 +758,7 @@ public class CameraToMpegTest extends AndroidTestCase {
 
             // Latch the data.
             mTextureRender.checkGlError("before updateTexImage");
+            //把图片流中最近的帧更新到surfacetexture纹理中去
             mSurfaceTexture.updateTexImage();
         }
 
@@ -810,7 +843,7 @@ public class CameraToMpegTest extends AndroidTestCase {
         public int getTextureId() {
             return mTextureID;
         }
-
+        // 把surfacetexture纹理画到EGLSurface中去
         public void drawFrame(SurfaceTexture st) {
             checkGlError("onDrawFrame start");
             st.getTransformMatrix(mSTMatrix);
