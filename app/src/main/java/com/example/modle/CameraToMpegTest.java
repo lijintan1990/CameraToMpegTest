@@ -15,7 +15,8 @@
  */
 
 //package android.media.cts;
-package com.example.modle.CameraToMpegTest;
+//package com.example.modle.CameraToMpegTest;
+
 import android.graphics.SurfaceTexture;
 import android.hardware.Camera;
 import android.media.MediaCodec;
@@ -158,10 +159,20 @@ public class CameraToMpegTest extends AndroidTestCase {
         Log.d(TAG, MIME_TYPE + " output " + encWidth + "x" + encHeight + " @" + encBitRate);
 
         try {
+            //初始化并打开相机
             prepareCamera(encWidth, encHeight);
+            //1 里面初始化了Encoder以及EGL,并且在调用了Encoder.createInputSurface创建了一个surface,
+            //2 并且把这个surface给了EGL的EGLSurface
+            // 这个线程就是opengl所在的线程，就是opengl线程
             prepareEncoder(encWidth, encHeight, encBitRate);
+            //3 大概简单理解就是当前context和EGLSurface绑定，在这个上面进行渲染
             mInputSurface.makeCurrent();
-            prepareSurfaceTexture();//关联了camera和surfaceTexture, textureid是自己创建的
+            //4 关联了camera和surfaceTexture, camera.setPreviewTexture 创建了textureid， textureid是给opengl渲染创建的
+            prepareSurfaceTexture();
+            //通过1 2 3 4，整条链路就打通了，这里做详细记录说明。
+            // Encoder的surface给了EGL创建了EGLSurface, 然后EGL提供了opengl线程环境，可以愉快的进行opengl操作了
+            // opengl的textureid 生成了一个surfaceTexture，而这个surfaceTexture给了camera使用(setPreviewTexture)，这样camera的数据
+            // 会直接绘制到这个texture上面，
 
             mCamera.startPreview();
 
@@ -359,7 +370,7 @@ public class CameraToMpegTest extends AndroidTestCase {
             e.printStackTrace();
         }
         mEncoder.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
-        mInputSurface = new CodecInputSurface(mEncoder.createInputSurface());
+        mInputSurface = new CodecInputSurface(mEncoder.createInputSurface());//
         mEncoder.start();
 
         // Output filename.  Ideally this would use Context.getFilesDir() rather than a
@@ -581,7 +592,7 @@ public class CameraToMpegTest extends AndroidTestCase {
             窗口对象的拓展、或是一个有着额外辅助缓冲的像素映射(pixmap)。这些辅助缓存
             包括颜色缓存(color buffer)、深度缓冲(depth buffer)、模板缓冲(stencil buffer)。
              */
-            //surface和EGL关联，应该就是拿到了opengl线程，类似于GLSurfaceView了
+            //surface和EGL关联
             mEGLSurface = EGL14.eglCreateWindowSurface(mEGLDisplay, configs[0], mSurface,
                     surfaceAttribs, 0);
             checkEglError("eglCreateWindowSurface");
@@ -683,6 +694,7 @@ public class CameraToMpegTest extends AndroidTestCase {
          * Creates instances of TextureRender and SurfaceTexture.
          */
         public SurfaceTextureManager() {
+            //mTextureRender是 opengl 绘制相关
             mTextureRender = new CameraToMpegTest.STextureRender();
             mTextureRender.surfaceCreated();
 
@@ -737,7 +749,7 @@ public class CameraToMpegTest extends AndroidTestCase {
          */
         public void awaitNewImage() {
             final int TIMEOUT_MS = 2500;
-            //这是一个同步锁而已，只能同时一个县城访问synchronized代码块
+            //这是一个同步锁而已，只能同时一个线程访问synchronized代码块
             synchronized (mFrameSyncObject) {
                 while (!mFrameAvailable) {
                     try {
@@ -758,7 +770,7 @@ public class CameraToMpegTest extends AndroidTestCase {
 
             // Latch the data.
             mTextureRender.checkGlError("before updateTexImage");
-            //把图片流中最近的帧更新到surfacetexture纹理中去
+            //把图片流中最近的帧更新到surfacetexture纹理中去，surfacetexture是camera画纹理的地方
             mSurfaceTexture.updateTexImage();
         }
 
